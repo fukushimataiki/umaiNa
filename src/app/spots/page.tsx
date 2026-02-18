@@ -13,8 +13,17 @@ import { SpotCard } from "@/components/spot-card"
 import { mockSpots, spotCategories } from "@/lib/mock-data"
 import { Search, Plus, MapPin, List, Map } from "lucide-react"
 import { useSearchParams } from "next/navigation"
+import { Suspense } from "react"
 
 export default function SpotsPage() {
+  return (
+    <Suspense>
+      <SpotsContent />
+    </Suspense>
+  )
+}
+
+function SpotsContent() {
   const searchParams = useSearchParams()
   const [searchQuery, setSearchQuery] = useState(searchParams?.get("query") || "")
   const [selectedCategory, setSelectedCategory] = useState<string>(searchParams?.get("category") || "all")

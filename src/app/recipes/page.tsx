@@ -14,9 +14,15 @@ import { Search, Plus, Filter, X } from "lucide-react"
 import { useSearchParams } from "next/navigation"
 import { Suspense } from "react"
 
-const Loading = () => null
-
 export default function RecipesPage() {
+  return (
+    <Suspense>
+      <RecipesContent />
+    </Suspense>
+  )
+}
+
+function RecipesContent() {
   const searchParams = useSearchParams()
   const [searchQuery, setSearchQuery] = useState(searchParams.get("search") || "")
   const [selectedCategory, setSelectedCategory] = useState<string>(searchParams.get("category") || "all")
@@ -164,5 +170,3 @@ export default function RecipesPage() {
     </div>
   )
 }
-
-export { Loading }

@@ -55,7 +55,6 @@ import {
 } from "recharts"
 import { useSearchParams } from "next/navigation"
 import { Suspense } from "react"
-import Loading from "./loading"
 
 // Mock admin data
 const mockUsers = [
@@ -90,6 +89,14 @@ const analyticsData = [
 ]
 
 export default function AdminPage() {
+  return (
+    <Suspense>
+      <AdminContent />
+    </Suspense>
+  )
+}
+
+function AdminContent() {
   const [activeTab, setActiveTab] = useState("overview")
   const [userSearch, setUserSearch] = useState("")
   const [contentSearch, setContentSearch] = useState("")
@@ -677,6 +684,3 @@ export default function AdminPage() {
   )
 }
 
-export function Loading() {
-  return null
-}
