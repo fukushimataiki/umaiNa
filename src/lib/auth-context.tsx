@@ -1,7 +1,7 @@
 "use client"
 
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
-import { testAccounts, validDeviceNumbers } from "./mock-data"
+import { createClient } from "./supabase/client"
 
 export interface AuthUser {
   id: string
@@ -36,113 +36,162 @@ interface RegisterData {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
+function profileToAuthUser(profile: Record<string, unknown>, email: string): AuthUser {
+  return {
+    id: profile.id as string,
+    email,
+    nickname: profile.nickname as string,
+    ageGroup: (profile.age_group as string) || '',
+    reductionReason: (profile.reduction_reason as string) || '',
+    rank: (profile.rank as AuthUser['rank']) || 'beginner',
+    points: (profile.points as number) || 0,
+    isDeviceOwner: (profile.is_device_owner as boolean) || false,
+    deviceNumber: (profile.device_number as string) || null,
+    createdAt: (profile.created_at as string) || '',
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const supabase = createClient()
 
-  // Load user from localStorage on mount
   useEffect(() => {
-    const savedUser = localStorage.getItem("umaina_user")
-    if (savedUser) {
+    // Check current session
+    const initAuth = async () => {
       try {
-        setUser(JSON.parse(savedUser))
+        const { data: { user: authUser } } = await supabase.auth.getUser()
+        if (authUser) {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', authUser.id)
+            .single()
+          if (profile) {
+            setUser(profileToAuthUser(profile, authUser.email || ''))
+          }
+        }
       } catch {
-        localStorage.removeItem("umaina_user")
+        // No session
       }
+      setIsLoading(false)
     }
-    setIsLoading(false)
-  }, [])
 
-  // Save user to localStorage when changed
-  useEffect(() => {
-    if (user) {
-      localStorage.setItem("umaina_user", JSON.stringify(user))
-    } else {
-      localStorage.removeItem("umaina_user")
-    }
-  }, [user])
+    initAuth()
 
-  const login = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 500))
-
-    const account = testAccounts.find(
-      acc => acc.email.toLowerCase() === email.toLowerCase() && acc.password === password
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (event === 'SIGNED_IN' && session?.user) {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', session.user.id)
+            .single()
+          if (profile) {
+            setUser(profileToAuthUser(profile, session.user.email || ''))
+          }
+        } else if (event === 'SIGNED_OUT') {
+          setUser(null)
+        }
+      }
     )
 
-    if (!account) {
+    return () => {
+      subscription.unsubscribe()
+    }
+  }, [supabase])
+
+  const login = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
+    const { error } = await supabase.auth.signInWithPassword({ email, password })
+
+    if (error) {
       return { success: false, error: "メールアドレスまたはパスワードが正しくありません" }
     }
 
-    const authUser: AuthUser = {
-      id: account.id,
-      email: account.email,
-      nickname: account.nickname,
-      ageGroup: account.ageGroup,
-      reductionReason: account.reductionReason,
-      rank: account.rank,
-      points: account.points,
-      isDeviceOwner: account.isDeviceOwner,
-      deviceNumber: account.deviceNumber,
-      createdAt: account.createdAt,
-    }
-
-    setUser(authUser)
     return { success: true }
   }
 
   const register = async (data: RegisterData): Promise<{ success: boolean; error?: string }> => {
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 500))
-
-    // Check if email already exists
-    const existingAccount = testAccounts.find(
-      acc => acc.email.toLowerCase() === data.email.toLowerCase()
-    )
-
-    if (existingAccount) {
-      return { success: false, error: "このメールアドレスは既に登録されています" }
-    }
-
-    // Create new user
-    const newUser: AuthUser = {
-      id: `user-${Date.now()}`,
+    const { data: authData, error } = await supabase.auth.signUp({
       email: data.email,
-      nickname: data.nickname,
-      ageGroup: data.ageGroup,
-      reductionReason: data.reductionReason,
-      rank: 'beginner',
-      points: 0,
-      isDeviceOwner: false,
-      deviceNumber: null,
-      createdAt: new Date().toISOString().split('T')[0],
+      password: data.password,
+      options: {
+        data: {
+          nickname: data.nickname,
+        },
+      },
+    })
+
+    if (error) {
+      if (error.message.includes('already registered')) {
+        return { success: false, error: "このメールアドレスは既に登録されています" }
+      }
+      return { success: false, error: error.message }
     }
 
-    setUser(newUser)
+    // Update profile with additional fields
+    if (authData.user) {
+      await supabase
+        .from('profiles')
+        .update({
+          age_group: data.ageGroup,
+          reduction_reason: data.reductionReason,
+        })
+        .eq('id', authData.user.id)
+    }
+
     return { success: true }
   }
 
-  const logout = () => {
+  const logout = async () => {
+    await supabase.auth.signOut()
     setUser(null)
   }
 
   const verifyDeviceNumber = async (deviceNumber: string): Promise<{ success: boolean; error?: string }> => {
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 500))
+    const upperNumber = deviceNumber.toUpperCase()
 
-    const isValid = validDeviceNumbers.includes(deviceNumber.toUpperCase())
+    // Check if device number is valid
+    const { data: device } = await supabase
+      .from('valid_device_numbers')
+      .select('*')
+      .eq('device_number', upperNumber)
+      .single()
 
-    if (!isValid) {
+    if (!device) {
       return { success: false, error: "無効なデバイス番号です。正しい番号を入力してください。" }
     }
 
+    if (device.is_used) {
+      return { success: false, error: "このデバイス番号は既に使用されています。" }
+    }
+
     if (user) {
-      const updatedUser: AuthUser = {
+      // Mark device as used
+      await supabase
+        .from('valid_device_numbers')
+        .update({
+          is_used: true,
+          used_by: user.id,
+          used_at: new Date().toISOString(),
+        })
+        .eq('device_number', upperNumber)
+
+      // Update profile
+      await supabase
+        .from('profiles')
+        .update({
+          is_device_owner: true,
+          device_number: upperNumber,
+        })
+        .eq('id', user.id)
+
+      setUser({
         ...user,
         isDeviceOwner: true,
-        deviceNumber: deviceNumber.toUpperCase(),
-      }
-      setUser(updatedUser)
+        deviceNumber: upperNumber,
+      })
     }
 
     return { success: true }

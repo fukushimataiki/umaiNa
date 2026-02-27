@@ -8,7 +8,8 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Separator } from "@/components/ui/separator"
 import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
-import { mockRecipes, mockRatings } from "@/lib/mock-data"
+import { getRecipeByIdServer } from "@/lib/queries/recipes.server"
+import { getRatingsByTargetServer } from "@/lib/queries/ratings.server"
 import { 
   Star, 
   Eye, 
@@ -28,15 +29,13 @@ export default async function RecipeDetailPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const recipe = mockRecipes.find((r) => r.id === id)
+  const recipe = await getRecipeByIdServer(id)
 
   if (!recipe) {
     notFound()
   }
 
-  const recipeRatings = mockRatings.filter(
-    (r) => r.targetType === "recipe" && r.targetId === recipe.id
-  )
+  const recipeRatings = await getRatingsByTargetServer("recipe", recipe.id)
 
   return (
     <div className="flex min-h-screen flex-col bg-background">

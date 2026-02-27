@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -22,7 +22,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { mockRecipes, mockSpots, rankConfig } from "@/lib/mock-data"
+import { rankConfig, type Recipe, type Spot } from "@/lib/mock-data"
+import { createClient } from "@/lib/supabase/client"
 import { 
   Users, 
   UtensilsCrossed, 
@@ -56,27 +57,34 @@ import {
 import { useSearchParams } from "next/navigation"
 import { Suspense } from "react"
 
-// Mock admin data
-const mockUsers = [
-  { id: "1", nickname: "健一", email: "kenichi@example.com", rank: "regular", points: 280, isDeviceOwner: true, status: "active", createdAt: "2025-10-15" },
-  { id: "2", nickname: "美香", email: "mika@example.com", rank: "expert", points: 520, isDeviceOwner: true, status: "active", createdAt: "2025-09-20" },
-  { id: "3", nickname: "太郎", email: "taro@example.com", rank: "beginner", points: 45, isDeviceOwner: false, status: "active", createdAt: "2025-12-01" },
-  { id: "4", nickname: "花子", email: "hanako@example.com", rank: "regular", points: 180, isDeviceOwner: false, status: "suspended", createdAt: "2025-11-10" },
-  { id: "5", nickname: "次郎", email: "jiro@example.com", rank: "beginner", points: 30, isDeviceOwner: false, status: "active", createdAt: "2025-12-10" },
-]
+interface AdminUser {
+  id: string
+  nickname: string
+  email: string
+  rank: string
+  points: number
+  isDeviceOwner: boolean
+  status: string
+  createdAt: string
+}
 
-const mockSupportTickets = [
-  { id: "1", userId: "2", userNickname: "美香", category: "usage", content: "電流レベル3で使用していますが、あまり効果を感じません。", status: "pending", createdAt: "2026-01-20" },
-  { id: "2", userId: "1", userNickname: "健一", category: "trouble", content: "充電ができなくなりました。", status: "in_progress", createdAt: "2026-01-18" },
-  { id: "3", userId: "2", userNickname: "美香", category: "other", content: "新しいレシピの追加リクエストです。", status: "resolved", createdAt: "2026-01-15" },
-]
+interface AdminTicket {
+  id: string
+  userId: string
+  userNickname: string
+  category: string
+  content: string
+  status: string
+  createdAt: string
+}
 
-const mockPurchaseIds = [
-  { id: "UMAINA-2024-0001", deviceModel: "Standard", isUsed: true, usedBy: "美香", usedAt: "2025-09-20" },
-  { id: "UMAINA-2024-0002", deviceModel: "Standard", isUsed: true, usedBy: "健一", usedAt: "2025-10-15" },
-  { id: "UMAINA-2024-0003", deviceModel: "Pro", isUsed: false, usedBy: null, usedAt: null },
-  { id: "UMAINA-2024-0004", deviceModel: "Standard", isUsed: false, usedBy: null, usedAt: null },
-]
+interface PurchaseId {
+  id: string
+  deviceModel: string
+  isUsed: boolean
+  usedBy: string | null
+  usedAt: string | null
+}
 
 const analyticsData = [
   { date: "1月16日", mau: 4200, recipes: 45, spots: 12 },
@@ -100,8 +108,121 @@ function AdminContent() {
   const [activeTab, setActiveTab] = useState("overview")
   const [userSearch, setUserSearch] = useState("")
   const [contentSearch, setContentSearch] = useState("")
+  const [users, setUsers] = useState<AdminUser[]>([])
+  const [recipes, setRecipes] = useState<Recipe[]>([])
+  const [spots, setSpots] = useState<Spot[]>([])
+  const [tickets, setTickets] = useState<AdminTicket[]>([])
+  const [purchaseIds, setPurchaseIds] = useState<PurchaseId[]>([])
+  const [stats, setStats] = useState({ users: 0, recipes: 0, spots: 0, owners: 0 })
 
-  const filteredUsers = mockUsers.filter((user) =>
+  useEffect(() => {
+    const supabase = createClient()
+
+    // Fetch profiles
+    supabase.from('profiles').select('*').order('created_at', { ascending: false }).then(({ data }) => {
+      if (data) {
+        const mapped = data.map((row: Record<string, unknown>) => ({
+          id: row.id as string,
+          nickname: row.nickname as string,
+          email: row.email as string,
+          rank: row.rank as string,
+          points: row.points as number,
+          isDeviceOwner: row.is_device_owner as boolean,
+          status: (row.status as string) || 'active',
+          createdAt: row.created_at as string,
+        }))
+        setUsers(mapped)
+        setStats(prev => ({
+          ...prev,
+          users: mapped.length,
+          owners: mapped.filter((u: AdminUser) => u.isDeviceOwner).length,
+        }))
+      }
+    })
+
+    // Fetch recipes
+    supabase.from('recipes').select('*').order('created_at', { ascending: false }).then(({ data }) => {
+      if (data) {
+        const mapped = data.map((row: Record<string, unknown>) => ({
+          id: row.id as string,
+          userId: row.user_id as string,
+          userNickname: row.user_nickname as string,
+          userAvatar: row.user_avatar as string | undefined,
+          title: row.title as string,
+          category: row.category as string,
+          tags: row.tags as string[],
+          ingredients: row.ingredients as { name: string; amount: string }[],
+          steps: row.steps as string[],
+          estimatedSalt: Number(row.estimated_salt),
+          imageUrl: row.image_url as string,
+          views: row.views as number,
+          avgRating: Number(row.avg_rating),
+          ratingCount: row.rating_count as number,
+          isOfficial: row.is_official as boolean,
+          currentLevel: row.current_level as number | undefined,
+          stimulusQuality: row.stimulus_quality as string | undefined,
+          createdAt: row.created_at as string,
+        }))
+        setRecipes(mapped)
+        setStats(prev => ({ ...prev, recipes: mapped.length }))
+      }
+    })
+
+    // Fetch spots
+    supabase.from('spots').select('*').order('created_at', { ascending: false }).then(({ data }) => {
+      if (data) {
+        const mapped = data.map((row: Record<string, unknown>) => ({
+          id: row.id as string,
+          userId: row.user_id as string,
+          userNickname: row.user_nickname as string,
+          placeId: row.place_id as string,
+          name: row.name as string,
+          address: row.address as string,
+          lat: row.lat as number,
+          lng: row.lng as number,
+          category: row.category as string,
+          saltLevel: row.salt_level as 'low' | 'medium' | 'high',
+          menuItems: row.menu_items as { name: string; description: string; saltLevel: 'low' | 'medium' | 'high' }[],
+          imageUrl: row.image_url as string,
+          avgRating: Number(row.avg_rating),
+          ratingCount: row.rating_count as number,
+          createdAt: row.created_at as string,
+        }))
+        setSpots(mapped)
+        setStats(prev => ({ ...prev, spots: mapped.length }))
+      }
+    })
+
+    // Fetch support tickets
+    supabase.from('support_tickets').select('*').order('created_at', { ascending: false }).then(({ data }) => {
+      if (data) {
+        setTickets(data.map((row: Record<string, unknown>) => ({
+          id: row.id as string,
+          userId: row.user_id as string,
+          userNickname: row.user_nickname as string || '',
+          category: row.category as string,
+          content: row.content as string,
+          status: row.status as string,
+          createdAt: row.created_at as string,
+        })))
+      }
+    })
+
+    // Fetch purchase IDs
+    supabase.from('purchase_ids').select('*').order('created_at', { ascending: false }).then(({ data }) => {
+      if (data) {
+        setPurchaseIds(data.map((row: Record<string, unknown>) => ({
+          id: row.id as string,
+          deviceModel: (row.device_model as string) || 'Standard',
+          isUsed: row.is_used as boolean,
+          usedBy: row.used_by as string | null,
+          usedAt: row.used_at as string | null,
+        })))
+      }
+    })
+  }, [])
+
+  const filteredUsers = users.filter((user) =>
     user.nickname.toLowerCase().includes(userSearch.toLowerCase()) ||
     user.email.toLowerCase().includes(userSearch.toLowerCase())
   )
@@ -145,8 +266,8 @@ function AdminContent() {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">総ユーザー数</p>
-                  <p className="text-2xl font-bold text-foreground">8,901</p>
-                  <p className="text-xs text-[#10B981]">+12% 今月</p>
+                  <p className="text-2xl font-bold text-foreground">{stats.users.toLocaleString()}</p>
+                  <p className="text-xs text-muted-foreground">登録済み</p>
                 </div>
               </CardContent>
             </Card>
@@ -157,8 +278,8 @@ function AdminContent() {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">レシピ数</p>
-                  <p className="text-2xl font-bold text-foreground">1,234</p>
-                  <p className="text-xs text-[#10B981]">+45 今週</p>
+                  <p className="text-2xl font-bold text-foreground">{stats.recipes.toLocaleString()}</p>
+                  <p className="text-xs text-muted-foreground">投稿済み</p>
                 </div>
               </CardContent>
             </Card>
@@ -169,8 +290,8 @@ function AdminContent() {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">スポット数</p>
-                  <p className="text-2xl font-bold text-foreground">567</p>
-                  <p className="text-xs text-[#10B981]">+18 今週</p>
+                  <p className="text-2xl font-bold text-foreground">{stats.spots.toLocaleString()}</p>
+                  <p className="text-xs text-muted-foreground">投稿済み</p>
                 </div>
               </CardContent>
             </Card>
@@ -181,8 +302,8 @@ function AdminContent() {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">デバイス購入者</p>
-                  <p className="text-2xl font-bold text-foreground">342</p>
-                  <p className="text-xs text-muted-foreground">登録率 85%</p>
+                  <p className="text-2xl font-bold text-foreground">{stats.owners.toLocaleString()}</p>
+                  <p className="text-xs text-muted-foreground">登録済み</p>
                 </div>
               </CardContent>
             </Card>
@@ -437,7 +558,7 @@ function AdminContent() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {mockRecipes.slice(0, 5).map((recipe) => (
+                        {recipes.slice(0, 5).map((recipe) => (
                           <TableRow key={recipe.id}>
                             <TableCell>
                               <Badge variant="outline">
@@ -471,7 +592,7 @@ function AdminContent() {
                             </TableCell>
                           </TableRow>
                         ))}
-                        {mockSpots.slice(0, 3).map((spot) => (
+                        {spots.slice(0, 3).map((spot) => (
                           <TableRow key={spot.id}>
                             <TableCell>
                               <Badge variant="outline">
@@ -523,7 +644,7 @@ function AdminContent() {
                       </div>
                       <div>
                         <p className="text-sm text-muted-foreground">登録済み購入者</p>
-                        <p className="text-2xl font-bold text-foreground">342</p>
+                        <p className="text-2xl font-bold text-foreground">{stats.owners}</p>
                       </div>
                     </CardContent>
                   </Card>
@@ -534,7 +655,7 @@ function AdminContent() {
                       </div>
                       <div>
                         <p className="text-sm text-muted-foreground">使用済み購入ID</p>
-                        <p className="text-2xl font-bold text-foreground">342</p>
+                        <p className="text-2xl font-bold text-foreground">{purchaseIds.filter(p => p.isUsed).length}</p>
                       </div>
                     </CardContent>
                   </Card>
@@ -545,7 +666,7 @@ function AdminContent() {
                       </div>
                       <div>
                         <p className="text-sm text-muted-foreground">未使用購入ID</p>
-                        <p className="text-2xl font-bold text-foreground">58</p>
+                        <p className="text-2xl font-bold text-foreground">{purchaseIds.filter(p => !p.isUsed).length}</p>
                       </div>
                     </CardContent>
                   </Card>
@@ -567,7 +688,7 @@ function AdminContent() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {mockPurchaseIds.map((item) => (
+                        {purchaseIds.map((item) => (
                           <TableRow key={item.id}>
                             <TableCell className="font-mono font-medium">{item.id}</TableCell>
                             <TableCell>{item.deviceModel}</TableCell>
@@ -600,7 +721,7 @@ function AdminContent() {
                       </div>
                       <div>
                         <p className="text-sm text-muted-foreground">未対応</p>
-                        <p className="text-2xl font-bold text-foreground">3</p>
+                        <p className="text-2xl font-bold text-foreground">{tickets.filter(t => t.status === 'pending').length}</p>
                       </div>
                     </CardContent>
                   </Card>
@@ -611,7 +732,7 @@ function AdminContent() {
                       </div>
                       <div>
                         <p className="text-sm text-muted-foreground">対応中</p>
-                        <p className="text-2xl font-bold text-foreground">2</p>
+                        <p className="text-2xl font-bold text-foreground">{tickets.filter(t => t.status === 'in_progress').length}</p>
                       </div>
                     </CardContent>
                   </Card>
@@ -621,8 +742,8 @@ function AdminContent() {
                         <CheckCircle className="h-6 w-6 text-[#10B981]" />
                       </div>
                       <div>
-                        <p className="text-sm text-muted-foreground">完了（今月）</p>
-                        <p className="text-2xl font-bold text-foreground">24</p>
+                        <p className="text-sm text-muted-foreground">完了</p>
+                        <p className="text-2xl font-bold text-foreground">{tickets.filter(t => t.status === 'resolved').length}</p>
                       </div>
                     </CardContent>
                   </Card>
@@ -645,7 +766,7 @@ function AdminContent() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {mockSupportTickets.map((ticket) => {
+                        {tickets.map((ticket) => {
                           const status = statusConfig[ticket.status as keyof typeof statusConfig]
                           return (
                             <TableRow key={ticket.id}>

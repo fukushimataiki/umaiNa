@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
@@ -20,7 +20,9 @@ import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
 import { AuthGuard } from "@/components/auth-guard"
 import { useAuth } from "@/lib/auth-context"
-import { mockRecipes, deviceGuide, faqItems } from "@/lib/mock-data"
+import { deviceGuide, faqItems, type Recipe } from "@/lib/mock-data"
+import { getRecipesClient } from "@/lib/queries/recipes"
+import { createClient } from "@/lib/supabase/client"
 import { 
   Crown, 
   BookOpen, 
@@ -49,11 +51,37 @@ function OwnersLoungeContent() {
   const [activeTab, setActiveTab] = useState("home")
   const [supportCategory, setSupportCategory] = useState("")
   const [supportMessage, setSupportMessage] = useState("")
+  const [deviceRecipes, setDeviceRecipes] = useState<Recipe[]>([])
+  const [isSubmittingTicket, setIsSubmittingTicket] = useState(false)
 
-  // Filter official recipes with device settings
-  const deviceRecipes = mockRecipes.filter((r) => r.isOfficial && r.currentLevel)
+  useEffect(() => {
+    getRecipesClient()
+      .then((recipes) => {
+        setDeviceRecipes(recipes.filter((r) => r.isOfficial && r.currentLevel))
+      })
+      .catch(() => {})
+  }, [])
 
   if (!user) return null
+
+  const handleSupportSubmit = async () => {
+    if (!supportCategory || !supportMessage) return
+    setIsSubmittingTicket(true)
+    try {
+      const supabase = createClient()
+      await supabase.from('support_tickets').insert({
+        user_id: user.id,
+        category: supportCategory,
+        content: supportMessage,
+        status: 'pending',
+      })
+      setSupportCategory("")
+      setSupportMessage("")
+    } catch {
+      // silently fail
+    }
+    setIsSubmittingTicket(false)
+  }
 
   return (
     <div className="flex min-h-screen flex-col bg-gradient-to-b from-amber-50/50 to-background">
@@ -362,9 +390,9 @@ function OwnersLoungeContent() {
                         rows={5}
                       />
                     </div>
-                    <Button className="w-full">
+                    <Button className="w-full" onClick={handleSupportSubmit} disabled={isSubmittingTicket || !supportCategory || !supportMessage}>
                       <Send className="mr-2 h-4 w-4" />
-                      送信する
+                      {isSubmittingTicket ? "送信中..." : "送信する"}
                     </Button>
                   </CardContent>
                 </Card>

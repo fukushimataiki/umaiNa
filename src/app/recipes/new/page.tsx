@@ -13,7 +13,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
 import { AuthGuard } from "@/components/auth-guard"
+import { useAuth } from "@/lib/auth-context"
 import { recipeCategories, recipeTags } from "@/lib/mock-data"
+import { createRecipe } from "@/lib/queries/recipes"
+import { addPoints } from "@/lib/queries/profiles"
 import { toast } from "sonner"
 import { 
   ChevronLeft, 
@@ -39,6 +42,7 @@ export default function NewRecipePage() {
 
 function NewRecipeContent() {
   const router = useRouter()
+  const { user } = useAuth()
   const [step, setStep] = useState(1)
   const [title, setTitle] = useState("")
   const [category, setCategory] = useState("")
@@ -87,13 +91,29 @@ function NewRecipeContent() {
   }
 
   const handleSubmit = async () => {
+    if (!user) return
     setIsSubmitting(true)
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1500))
-    toast.success("レシピを投稿しました！", {
-      description: "50ポイントを獲得しました。",
-    })
-    router.push("/recipes")
+    try {
+      await createRecipe({
+        userId: user.id,
+        userNickname: user.nickname,
+        title,
+        category,
+        tags: selectedTags,
+        ingredients: ingredients.filter((i) => i.name && i.amount),
+        steps: steps.filter((s) => s),
+        estimatedSalt: estimatedSalt ? parseFloat(estimatedSalt) : 0,
+        imageUrl: "/placeholder.svg",
+      })
+      await addPoints(user.id, 50)
+      toast.success("レシピを投稿しました！", {
+        description: "50ポイントを獲得しました。",
+      })
+      router.push("/recipes")
+    } catch {
+      toast.error("投稿に失敗しました。もう一度お試しください。")
+      setIsSubmitting(false)
+    }
   }
 
   const canProceedStep1 = title && category

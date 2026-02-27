@@ -15,7 +15,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
 import { AuthGuard } from "@/components/auth-guard"
+import { useAuth } from "@/lib/auth-context"
 import { spotCategories } from "@/lib/mock-data"
+import { createSpot } from "@/lib/queries/spots"
+import { addPoints } from "@/lib/queries/profiles"
 import { toast } from "sonner"
 import { 
   ChevronLeft, 
@@ -43,6 +46,7 @@ export default function NewSpotPage() {
 
 function NewSpotContent() {
   const router = useRouter()
+  const { user } = useAuth()
   const searchParams = useSearchParams()
   const [step, setStep] = useState(1)
   const [shopName, setShopName] = useState("")
@@ -70,13 +74,28 @@ function NewSpotContent() {
   }
 
   const handleSubmit = async () => {
+    if (!user) return
     setIsSubmitting(true)
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1500))
-    toast.success("スポットを投稿しました！", {
-      description: "30ポイントを獲得しました。",
-    })
-    router.push("/spots")
+    try {
+      await createSpot({
+        userId: user.id,
+        userNickname: user.nickname,
+        name: shopName,
+        address,
+        category,
+        saltLevel,
+        menuItems: menuItems.filter((m) => m.name),
+        imageUrl: "/placeholder.svg",
+      })
+      await addPoints(user.id, 30)
+      toast.success("スポットを投稿しました！", {
+        description: "30ポイントを獲得しました。",
+      })
+      router.push("/spots")
+    } catch {
+      toast.error("投稿に失敗しました。もう一度お試しください。")
+      setIsSubmitting(false)
+    }
   }
 
   const canProceedStep1 = shopName && address && category

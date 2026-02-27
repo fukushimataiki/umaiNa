@@ -9,7 +9,8 @@ import { Separator } from "@/components/ui/separator"
 import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
 import { SingleSpotMap } from "@/components/google-map"
-import { mockSpots, mockRatings } from "@/lib/mock-data"
+import { getSpotByIdServer } from "@/lib/queries/spots.server"
+import { getRatingsByTargetServer } from "@/lib/queries/ratings.server"
 import { 
   Star, 
   MapPin, 
@@ -29,15 +30,13 @@ export default async function SpotDetailPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const spot = mockSpots.find((s) => s.id === id)
+  const spot = await getSpotByIdServer(id)
 
   if (!spot) {
     notFound()
   }
 
-  const spotRatings = mockRatings.filter(
-    (r) => r.targetType === "spot" && r.targetId === spot.id
-  )
+  const spotRatings = await getRatingsByTargetServer("spot", spot.id)
 
   const saltLevelConfig = {
     low: { label: "低塩", color: "bg-[#10B981] text-white", description: "塩分1.5g以下のメニューあり" },

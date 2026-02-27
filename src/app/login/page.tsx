@@ -127,29 +127,17 @@ export default function LoginPage() {
             </Link>
           </div>
 
-          {/* Test Account Info */}
+          {/* Registration Prompt */}
           <div className="mt-6 rounded-lg border border-border bg-muted/50 p-4">
             <div className="mb-2 flex items-center gap-2 text-sm font-medium text-foreground">
               <Info className="h-4 w-4 text-primary" />
-              テストアカウント
+              はじめての方へ
             </div>
-            <div className="space-y-2 text-xs text-muted-foreground">
-              <div className="rounded bg-background p-2">
-                <p className="font-medium text-foreground">一般ユーザー</p>
-                <p>Email: demo@umaina.jp</p>
-                <p>Password: demo1234</p>
-              </div>
-              <div className="rounded bg-background p-2">
-                <p className="font-medium text-foreground">デバイスオーナー</p>
-                <p>Email: test@umaina.jp</p>
-                <p>Password: test1234</p>
-              </div>
-              <div className="rounded bg-background p-2">
-                <p className="font-medium text-foreground">マスターユーザー</p>
-                <p>Email: owner@umaina.jp</p>
-                <p>Password: owner1234</p>
-              </div>
-            </div>
+            <p className="text-sm text-muted-foreground">
+              アカウントをお持ちでない方は、まず
+              <Link href="/register" className="text-primary hover:underline">新規登録</Link>
+              してください。登録は無料です。
+            </p>
           </div>
         </CardContent>
       </Card>

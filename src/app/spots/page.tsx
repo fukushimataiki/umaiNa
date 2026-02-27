@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -10,8 +10,9 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
 import { SpotCard } from "@/components/spot-card"
-import { mockSpots, spotCategories } from "@/lib/mock-data"
-import { Search, Plus, MapPin, List, Map } from "lucide-react"
+import { spotCategories, type Spot } from "@/lib/mock-data"
+import { getSpotsClient } from "@/lib/queries/spots"
+import { Search, Plus, MapPin, List, Map, Loader2 } from "lucide-react"
 import { useSearchParams } from "next/navigation"
 import { Suspense } from "react"
 
@@ -25,13 +26,21 @@ export default function SpotsPage() {
 
 function SpotsContent() {
   const searchParams = useSearchParams()
+  const [spots, setSpots] = useState<Spot[]>([])
+  const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState(searchParams?.get("query") || "")
   const [selectedCategory, setSelectedCategory] = useState<string>(searchParams?.get("category") || "all")
   const [selectedSaltLevel, setSelectedSaltLevel] = useState<string>(searchParams?.get("saltLevel") || "all")
   const [sortBy, setSortBy] = useState(searchParams?.get("sortBy") || "popular")
   const [viewMode, setViewMode] = useState<"list" | "map">(searchParams?.get("viewMode") as "list" | "map" || "list")
 
-  const filteredSpots = mockSpots
+  useEffect(() => {
+    getSpotsClient()
+      .then((data) => { setSpots(data); setLoading(false) })
+      .catch(() => setLoading(false))
+  }, [])
+
+  const filteredSpots = spots
     .filter((spot) => {
       const matchesSearch = spot.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         spot.address.toLowerCase().includes(searchQuery.toLowerCase())
@@ -159,7 +168,11 @@ function SpotsContent() {
           </div>
 
           {/* Content */}
-          {viewMode === "list" ? (
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
+          ) : viewMode === "list" ? (
             filteredSpots.length > 0 ? (
               <div className="grid gap-4 sm:gap-6 sm:grid-cols-2 lg:grid-cols-3">
                 {filteredSpots.map((spot) => (

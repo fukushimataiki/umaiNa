@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -9,8 +9,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
 import { RecipeCard } from "@/components/recipe-card"
-import { mockRecipes, recipeCategories, recipeTags } from "@/lib/mock-data"
-import { Search, Plus, Filter, X } from "lucide-react"
+import { recipeCategories, recipeTags, type Recipe } from "@/lib/mock-data"
+import { getRecipesClient } from "@/lib/queries/recipes"
+import { Search, Plus, Filter, X, Loader2 } from "lucide-react"
 import { useSearchParams } from "next/navigation"
 import { Suspense } from "react"
 
@@ -24,6 +25,8 @@ export default function RecipesPage() {
 
 function RecipesContent() {
   const searchParams = useSearchParams()
+  const [recipes, setRecipes] = useState<Recipe[]>([])
+  const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState(searchParams.get("search") || "")
   const [selectedCategory, setSelectedCategory] = useState<string>(searchParams.get("category") || "all")
   const [selectedTags, setSelectedTags] = useState<string[]>(() => {
@@ -32,13 +35,19 @@ function RecipesContent() {
   })
   const [sortBy, setSortBy] = useState(searchParams.get("sort") || "popular")
 
+  useEffect(() => {
+    getRecipesClient()
+      .then((data) => { setRecipes(data); setLoading(false) })
+      .catch(() => setLoading(false))
+  }, [])
+
   const toggleTag = (tag: string) => {
     setSelectedTags((prev) =>
       prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
     )
   }
 
-  const filteredRecipes = mockRecipes
+  const filteredRecipes = recipes
     .filter((recipe) => {
       const matchesSearch = recipe.title.toLowerCase().includes(searchQuery.toLowerCase())
       const matchesCategory = selectedCategory === "all" || recipe.category === selectedCategory
@@ -143,7 +152,11 @@ function RecipesContent() {
           </div>
 
           {/* Recipe Grid */}
-          {filteredRecipes.length > 0 ? (
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
+          ) : filteredRecipes.length > 0 ? (
             <div className="grid gap-4 sm:gap-6 sm:grid-cols-2 lg:grid-cols-3">
               {filteredRecipes.map((recipe) => (
                 <RecipeCard key={recipe.id} recipe={recipe} />

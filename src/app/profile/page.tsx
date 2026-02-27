@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -14,13 +14,14 @@ import { AuthGuard } from "@/components/auth-guard"
 import { useAuth } from "@/lib/auth-context"
 import { RecipeCard } from "@/components/recipe-card"
 import { SpotCard } from "@/components/spot-card"
-import { 
-  mockRecipes, 
-  mockSpots, 
-  rankConfig, 
+import {
+  rankConfig,
   mockSaltSavings,
-  pointActions 
+  pointActions,
+  type Recipe,
+  type Spot
 } from "@/lib/mock-data"
+import { createClient } from "@/lib/supabase/client"
 import { 
   Star, 
   Crown, 
@@ -53,14 +54,74 @@ export default function ProfilePage() {
 function ProfileContent() {
   const { user } = useAuth()
   const [activeTab, setActiveTab] = useState("overview")
-  
-  if (!user) return null
-  
-  const rankInfo = rankConfig[user.rank]
+  const [userRecipes, setUserRecipes] = useState<Recipe[]>([])
+  const [userSpots, setUserSpots] = useState<Spot[]>([])
 
-  // User's posts (mock - filter by user id)
-  const userRecipes = mockRecipes.filter((r) => r.userId === user.id).slice(0, 2)
-  const userSpots = mockSpots.filter((s) => s.userId === user.id)
+  useEffect(() => {
+    if (!user) return
+    const supabase = createClient()
+
+    supabase
+      .from('recipes')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .then(({ data }) => {
+        if (data) {
+          setUserRecipes(data.map((row: Record<string, unknown>) => ({
+            id: row.id as string,
+            userId: row.user_id as string,
+            userNickname: row.user_nickname as string,
+            userAvatar: row.user_avatar as string | undefined,
+            title: row.title as string,
+            category: row.category as string,
+            tags: row.tags as string[],
+            ingredients: row.ingredients as { name: string; amount: string }[],
+            steps: row.steps as string[],
+            estimatedSalt: Number(row.estimated_salt),
+            imageUrl: row.image_url as string,
+            views: row.views as number,
+            avgRating: Number(row.avg_rating),
+            ratingCount: row.rating_count as number,
+            isOfficial: row.is_official as boolean,
+            currentLevel: row.current_level as number | undefined,
+            stimulusQuality: row.stimulus_quality as string | undefined,
+            createdAt: row.created_at as string,
+          })))
+        }
+      })
+
+    supabase
+      .from('spots')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .then(({ data }) => {
+        if (data) {
+          setUserSpots(data.map((row: Record<string, unknown>) => ({
+            id: row.id as string,
+            userId: row.user_id as string,
+            userNickname: row.user_nickname as string,
+            placeId: row.place_id as string,
+            name: row.name as string,
+            address: row.address as string,
+            lat: row.lat as number,
+            lng: row.lng as number,
+            category: row.category as string,
+            saltLevel: row.salt_level as 'low' | 'medium' | 'high',
+            menuItems: row.menu_items as { name: string; description: string; saltLevel: 'low' | 'medium' | 'high' }[],
+            imageUrl: row.image_url as string,
+            avgRating: Number(row.avg_rating),
+            ratingCount: row.rating_count as number,
+            createdAt: row.created_at as string,
+          })))
+        }
+      })
+  }, [user])
+
+  if (!user) return null
+
+  const rankInfo = rankConfig[user.rank]
 
   // Next rank calculation
   const ranks = Object.entries(rankConfig)
@@ -316,7 +377,7 @@ function ProfileContent() {
                     <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4">
                       <div className="rounded-lg border border-border p-3 text-center sm:p-4">
                         <UtensilsCrossed className="mx-auto mb-1.5 h-5 w-5 text-primary sm:mb-2 sm:h-6 sm:w-6" />
-                        <p className="text-xl font-bold text-foreground sm:text-2xl">{userRecipes.length + 3}</p>
+                        <p className="text-xl font-bold text-foreground sm:text-2xl">{userRecipes.length}</p>
                         <p className="text-xs text-muted-foreground sm:text-sm">レシピ投稿</p>
                       </div>
                       <div className="rounded-lg border border-border p-3 text-center sm:p-4">
@@ -343,7 +404,7 @@ function ProfileContent() {
             <TabsContent value="recipes">
               {userRecipes.length > 0 ? (
                 <div className="grid gap-4 sm:gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                  {mockRecipes.slice(0, 4).map((recipe) => (
+                  {userRecipes.map((recipe) => (
                     <RecipeCard key={recipe.id} recipe={recipe} />
                   ))}
                 </div>
